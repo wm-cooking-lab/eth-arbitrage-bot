@@ -15,27 +15,19 @@ const DEXES = [
 const V2_FACTORY_ABI = ['function getPair(address,address) view returns (address)'];
 const V3_FACTORY_ABI = ['function getPool(address,address,uint24) view returns (address)'];
 
-
-// sorted lexicographically
+// sorted lexicographically (adresses checksum)
 const TOKENS = {
-  SHIB: '0x95aD61b0a150d79219dCF64E1E6Cc01f0B64C4cE',
-  USDC: '0xA0b86991c6218b36c1d19d4a2e9eb0ce3606eb48',
+  SHIB: '0x95ad61b0a150d79219dcf64e1e6cc01f0b64c4ce',
+  USDC: '0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48',
   WBTC: '0x2260FAC5E5542a773Aa44fBCfeDf7C193bc2C599',
   WETH: '0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2',
 };
-
-/* const PAIRS = [
-  { base: TOKENS.WETH, quote: TOKENS.USDC }, // ETH/USD
-  { base: TOKENS.WBTC, quote: TOKENS.USDC }, // BTC/USD
-  { base: TOKENS.SHIB, quote: TOKENS.USDC }, // SHIB/USD
-]; */
 
 // ABI utilitaire pour interroger n'importe quel token ERC-20
 const ERC20_ABI = [
   "function decimals() view returns (uint8)",
   "function symbol() view returns (string)"
 ];
-
 
 const PAIR_ABI = [
   'function token0() view returns (address)',
@@ -49,50 +41,76 @@ const V3_POOL_ABI = [
   'function token1() view returns (address)'
 ];
 
+const PAIRS = [
+  [TOKENS.WETH, TOKENS.USDC],
+  [TOKENS.WBTC, TOKENS.USDC],
+  [TOKENS.SHIB, TOKENS.USDC],
+];
+
+
 const pool = new Pool({ connectionString: process.env.DATABASE_URL });
 
 async function store(row) {
+  // row: { dex, base, quote, price, blockNumber }
   await pool.query(
-    `INSERT INTO dex_prices(dex, pair, block_number, price_eth_usdc, price_usdc_eth)
-     VALUES ($1,$2,$3,$4,$5)`,
-    [row.dex, 'WETH/USDC', row.blockNumber, row.priceETH_USDC, row.priceUSDC_ETH]
+    `INSERT INTO dex_prices(dex, base, quote, block_number, price_base_quote, price_quote_base)
+     VALUES ($1,$2,$3,$4,$5,$6)`,
+    [row.dex, row.symbB, row.symbQ, row.blockNumber, row.price, 1 / row.price]
   );
 }
 
 async function fetchSpotPriceV2(factoryAddress, baseAddress, quoteAddress) {
 
-  const factory = new ethers.Contract(factoryAddress, V2_FACTORY_ABI, provider);
-  const pairAddress = await factory.getPair(baseAddress, quoteAddress);
+// Normalize all input addresses to checksum format
+  const f = ethers.getAddress(factoryAddress);
+  const base  = ethers.getAddress(baseAddress);
+  const quote = ethers.getAddress(quoteAddress);
 
+  const factory = new ethers.Contract(f, V2_FACTORY_ABI, provider);
+  const pairAddress = await factory.getPair(base, quote);
   if (!pairAddress || pairAddress === ethers.ZeroAddress) {
-    throw new Error("Pair does not exist on this DEX");
+    return null;
   }
-  const pair = new ethers.Contract(pairAddress, PAIR_ABI, provider);
-  const [t0,t1,reserves, blockNumber] = await Promise.all([pair.token0(),pair.token1(),pair.getReserves(),provider.getBlockNumber()]);
 
-const [dec0, dec1] = await Promise.all([
-    new ethers.Contract(baseAddress, ERC20_ABI, provider).decimals(),new ethers.Contract(quoteAddress, ERC20_ABI, provider).decimals(),
-]);
-  const Res1  = parseFloat(ethers.formatUnits(reserves.reserve1, dec1));  
-  const Res0  = parseFloat(ethers.formatUnits(reserves.reserve0, dec0));  
-  if (t0.toLowerCase() === baseAddress.toLowerCase()) {
-      const price = Res0/Res1;
-} else {
-    const price = Res1/Res0;
-}
+  const pair = new ethers.Contract(pairAddress, PAIR_ABI, provider);
+  const [t0, t1, reserves, blockNumber] = await Promise.all([
+    pair.token0(), pair.token1(), pair.getReserves(), provider.getBlockNumber()
+  ]);
+
+  const [dec0, dec1] = await Promise.all([
+    new ethers.Contract(t0, ERC20_ABI, provider).decimals(),
+    new ethers.Contract(t1, ERC20_ABI, provider).decimals(),
+  ]);
+
+  const Res0 = parseFloat(ethers.formatUnits(reserves.reserve0, dec0));
+  const Res1 = parseFloat(ethers.formatUnits(reserves.reserve1, dec1));
+
+  // Decide price orientation
+  let price;
+  if (t0.toLowerCase() === base.toLowerCase()) {
+    price = Res1 / Res0;
+  } else {
+    price = Res0 / Res1;
+  }
+
   return { price, blockNumber };
 }
 
+
+
 async function fetchSpotPriceETHUSDC_V3(factoryAddress, baseAddress, quoteAddress, fee) {
 
-  const factory = new ethers.Contract(factoryAddress, V3_FACTORY_ABI, provider);
-  const poolAddress = await factory.getPool(baseAddress, quoteAddress, fee);
+  const f = ethers.getAddress(factoryAddress);
+  const base  = ethers.getAddress(baseAddress);
+  const quote = ethers.getAddress(quoteAddress);
+
+  const factory = new ethers.Contract(f, V3_FACTORY_ABI, provider);
+  const poolAddress = await factory.getPool(base, quote, fee);
   if (!poolAddress || poolAddress === ethers.ZeroAddress) {
-    throw new Error("Pool does not exist on this DEX");
+    return null;
   }
 
   const poolV3 = new ethers.Contract(poolAddress, V3_POOL_ABI, provider);
-  
   const [t0, t1, slot, blockNumber] = await Promise.all([
     poolV3.token0(), poolV3.token1(), poolV3.slot0(), provider.getBlockNumber()
   ]);
@@ -102,24 +120,18 @@ async function fetchSpotPriceETHUSDC_V3(factoryAddress, baseAddress, quoteAddres
     new ethers.Contract(t1, ERC20_ABI, provider).decimals(),
   ]);
 
-  const sqrtX96 = BigInt(slot.sqrtPriceX96);
+  const sqrtX96 = slot.sqrtPriceX96; //BigInt
   const Q192 = (1n << 192n); // 2^192
 
-  let num = sqrtX96 * sqrtX96; // BigInt
-  let den = Q192;              
-
-  const decDiff = BigInt(Number(dec0) - Number(dec1));
-  if (decDiff > 0n) {
-    den /= 10n ** decDiff;
-  } else if (decDiff < 0n) {
-    den *= 10n ** (-decDiff);
-  }
-
+  let num = sqrtX96 * sqrtX96; 
+  let den = Q192;
   let price;
-  if (t0.toLowerCase() === baseAddress.toLowerCase()) {
-    price = Number(num) / Number(den);
+
+  // Price1/0=(sqrt^2 / 2^192) * 10^(dec0 - dec1)
+  if (t0.toLowerCase() === base.toLowerCase()) {
+    price = Number(num)/ Number(den)*10**(dec0-dec1) ;
   } else {
-    price = Number(den) / Number(num);
+    price = Number(den) / Number(num)/10**(dec0-dec1);
   }
   return { price, blockNumber };
 }
@@ -127,41 +139,61 @@ async function fetchSpotPriceETHUSDC_V3(factoryAddress, baseAddress, quoteAddres
 async function tick() {
   try {
     const out = [];
-    for (const d of DEXES) {
-      const p = d.name.startsWith('uniswap-v3')
-        ? await fetchSpotPriceETHUSDC_V3(d.pairAddress)
-        : await fetchSpotPriceETHUSDC(d.pairAddress);
-      const row = { dex: d.name, ...p };
-      out.push(row);
-      await store(row);
-    }
-    console.log(
-      out.map(x => `${x.dex}:${x.priceETH_USDC.toFixed(4)} USDC/ETH @#${x.blockNumber}`).join(' | ')
-    );
+    const blockNumber = await provider.getBlockNumber(); 
+    for (const [base, quote] of PAIRS) {
+      for (const d of DEXES) {
+        try {
+          const p = d.proto === 'v3'
+            ? await fetchSpotPriceETHUSDC_V3(d.factory, base, quote, d.fee)
+            : await fetchSpotPriceV2(d.factory, base, quote);
 
-    /* // (Optionnel) calcul d'écart :
-    const GAP_ALERT = 0.005; // 0.5%
-    const a = out[0], b = out[1];
-    const pct = b.priceETH_USDC / a.priceETH_USDC - 1;
-    if (Math.abs(pct) >= GAP_ALERT) {
-      const s = pct >= 0 ? '+' : '';
-      console.log(`ECART ${s}${(pct*100).toFixed(2)}% — ${b.dex} vs ${a.dex}`);
+          if (!p || !Number.isFinite(p.price)) continue; 
+
+const symbQ =Object.entries(TOKENS).find(([, addr]) => addr === quote)?. [0] ?? "UNKNOWN";
+const symbB =Object.entries(TOKENS).find(([, addr]) => addr === base)?. [0] ?? "UNKNOWN";
+          const row = { dex: d.dex, symbB, symbQ, ...p, blockNumber };
+          out.push(row);
+          await store(row);
+        } catch (err) {
+          continue;
+        }
+      }
     }
-    */
+
+    if (out.length === 0) {
+      console.log('Aucun marché disponible sur ces DEX/fees pour les paires choisies.');
+      return;
+    }
+
+    console.log(
+      out
+        .filter(x => Number.isFinite(x.price))
+        .map(x => `${x.dex}:${x.price.toFixed(6)} ${label(x.symbQ)}/${label(x.symbB)} @#${x.blockNumber}`)
+        .join(' | ')
+    );
   } catch (e) {
     console.error('tick:', e.message);
   }
 }
 
+
+/* // (Optionnel) calcul d'écart :
+const GAP_ALERT = 0.005; // 0.5%
+const a = out[0], b = out[1];
+const pct = b.priceETH_USDC / a.priceETH_USDC - 1;
+if (Math.abs(pct) >= GAP_ALERT) {
+  const s = pct >= 0 ? '+' : '';
+  console.log(`ECART ${s}${(pct*100).toFixed(2)}% — ${b.dex} vs ${a.dex}`);
+}
+*/
+
 async function main() {
   let lastBlock = 0;
 
-  // Petit log + tick initial pour valider la connexion
   const current = await provider.getBlockNumber();
   console.log('Démarré. Bloc actuel :', current);
   await tick();
 
-  // écoute en continu les nouveaux blocs
   provider.on('block', async (blockNumber) => {
     if (blockNumber !== lastBlock) {
       lastBlock = blockNumber;
@@ -170,7 +202,6 @@ async function main() {
     }
   });
 
-  // (facultatif) capter les erreurs provider
   provider.on('error', (err) => console.error('provider error:', err?.message || err));
 }
 
