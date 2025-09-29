@@ -53,12 +53,10 @@ async function store(row) {
   );
 }
 
-async function fetchSpotPriceV2(factoryAddress, baseAddress, quoteAddress,decBase, decQuote) {
+async function fetchSpotPriceV2(factoryAddress, base, quote,decBase, decQuote) {
 
 // Normalize all input addresses to checksum format
   const f = ethers.getAddress(factoryAddress);
-  const base  = ethers.getAddress(baseAddress);
-  const quote = ethers.getAddress(quoteAddress);
 
   const factory = new ethers.Contract(f, V2_FACTORY_ABI, provider);
   const pairAddress = await factory.getPair(base, quote);
@@ -81,16 +79,14 @@ async function fetchSpotPriceV2(factoryAddress, baseAddress, quoteAddress,decBas
     ResQuote = parseFloat(ethers.formatUnits(reserves.reserve0, decQuote));
   }
   let price = ResQuote / ResBase;
-  return { price};
+  return price;
 }
 
 
 
-async function fetchSpotPriceETHUSDC_V3(factoryAddress, baseAddress, quoteAddress, decBase, decQuote, fee) {
+async function fetchSpotPriceETHUSDC_V3(factoryAddress, base, quote, decBase, decQuote, fee) {
 
   const f = ethers.getAddress(factoryAddress);
-  const base  = ethers.getAddress(baseAddress);
-  const quote = ethers.getAddress(quoteAddress);
 
   const factory = new ethers.Contract(f, V3_FACTORY_ABI, provider);
   const poolAddress = await factory.getPool(base, quote, fee);
@@ -114,7 +110,7 @@ async function fetchSpotPriceETHUSDC_V3(factoryAddress, baseAddress, quoteAddres
   } else {  //Base = token 1 
     price = Number(den)/Number(num)*10**(decBase-decQuote);
   }
-  return { price};
+  return price;
 }
 
 async function tick() {
@@ -124,15 +120,25 @@ async function tick() {
     for (const [base, quote] of PAIRS) {
       for (const d of DEXES) {
         try {
-          const p = d.proto === 'v3'
-            ? await fetchSpotPriceETHUSDC_V3(d.factory, base, quote, d.fee)
-            : await fetchSpotPriceV2(d.factory, base, quote);
+          const b = ethers.getAddress(base);
+          const q = ethers.getAddress(quote);
 
-          if (!p || !Number.isFinite(p.price)) continue; 
+          let symbB = "UNKNOWN", decBase = 18;
+          let symbQ = "UNKNOWN", decQuote = 18;
 
-          const symbQ =Object.entries(TOKENS).find(([, addr]) => addr === quote)?. [0] ?? "UNKNOWN";
-          const symbB =Object.entries(TOKENS).find(([, addr]) => addr === base)?. [0] ?? "UNKNOWN";
-          const row = { dex: d.dex, symbB, symbQ, ...p, blockNumber };
+          for (const [sym, t] of Object.entries(TOKENS)) {
+            const a = ethers.getAddress(t.address);
+            if (a === b) { symbB = sym; decBase = Number(t.decimals); }
+            if (a === q) { symbQ = sym; decQuote = Number(t.decimals); }
+            if (symbB !== "UNKNOWN" && symbQ !== "UNKNOWN") break;
+          }
+
+          const p = d.proto === 'v3'? await fetchSpotPriceETHUSDC_V3(d.factory, b, q,decBase, decQuote, d.fee) : 
+          await fetchSpotPriceV2(d.factory, b, q, decBase, decQuote);
+
+          if (!Number.isFinite(p)) continue; 
+
+          const row = { dex: d.dex, symbB, symbQ, p, blockNumber };
           out.push(row);
           await store(row);
         } catch (err) {
@@ -148,8 +154,8 @@ async function tick() {
 
     console.log(
       out
-        .filter(x => Number.isFinite(x.price))
-        .map(x => `${x.dex}:${x.price.toFixed(6)} ${label(x.symbQ)}/${label(x.symbB)} @#${x.blockNumber}`)
+        .filter(x => Number.isFinite(x.p))
+        .map(x => `${x.dex}:${x.p.toFixed(6)} ${label(x.symbQ)}/${label(x.symbB)} @#${x.blockNumber}`)
         .join(' | ')
     );
   } catch (e) {
