@@ -70,7 +70,7 @@ async function fetchSpotPriceV2(factoryAddress, baseAddress, quoteAddress,decBas
   const reserves = await (pair.getReserves());
 
   let ResBase, ResQuote;
-// Uniswap V2 (and most forks): token0 = min(addressA, addressB) by numeric address (uint160)
+// Uniswap V2/V3 (and most forks): token0 = min(addressA, addressB) by numeric address (uint160)
   if (BigInt(base)<BigInt(quote))
   {
     ResBase = parseFloat(ethers.formatUnits(reserves.reserve0, decBase));
@@ -86,7 +86,7 @@ async function fetchSpotPriceV2(factoryAddress, baseAddress, quoteAddress,decBas
 
 
 
-async function fetchSpotPriceETHUSDC_V3(factoryAddress, baseAddress, quoteAddress, fee) {
+async function fetchSpotPriceETHUSDC_V3(factoryAddress, baseAddress, quoteAddress, decBase, decQuote, fee) {
 
   const f = ethers.getAddress(factoryAddress);
   const base  = ethers.getAddress(baseAddress);
@@ -99,14 +99,7 @@ async function fetchSpotPriceETHUSDC_V3(factoryAddress, baseAddress, quoteAddres
   }
 
   const poolV3 = new ethers.Contract(poolAddress, V3_POOL_ABI, provider);
-  const [t0, t1, slot, blockNumber] = await Promise.all([
-    poolV3.token0(), poolV3.token1(), poolV3.slot0(), provider.getBlockNumber()
-  ]);
-
-  const [dec0, dec1] = await Promise.all([
-    new ethers.Contract(t0, ERC20_ABI, provider).decimals(),
-    new ethers.Contract(t1, ERC20_ABI, provider).decimals(),
-  ]);
+  const slot = await (poolV3.slot0());
 
   const sqrtX96 = slot.sqrtPriceX96; //BigInt
   const Q192 = (1n << 192n); // 2^192
@@ -116,12 +109,12 @@ async function fetchSpotPriceETHUSDC_V3(factoryAddress, baseAddress, quoteAddres
   let price;
 
   // Price1/0=(sqrt^2 / 2^192) * 10^(dec0 - dec1)
-  if (t0.toLowerCase() === base.toLowerCase()) {
-    price = Number(num)/ Number(den)*10**(dec0-dec1) ;
-  } else {
-    price = Number(den) / Number(num)/10**(dec0-dec1);
+  if (BigInt(base)<BigInt(quote)) { // Base = token 0
+    price = Number(num)/Number(den)*10**(decBase-decQuote) ;
+  } else {  //Base = token 1 
+    price = Number(den)/Number(num)*10**(decBase-decQuote);
   }
-  return { price, blockNumber };
+  return { price};
 }
 
 async function tick() {
