@@ -36,9 +36,9 @@ const V3_POOL_ABI = [
 ];
 
 const PAIRS = [
-  [TOKENS.WETH, TOKENS.USDC],
-  [TOKENS.WBTC, TOKENS.USDC],
-  [TOKENS.SHIB, TOKENS.USDC],
+  [TOKENS.WETH.address, TOKENS.USDC.address],
+  [TOKENS.WBTC.address, TOKENS.USDC.address],
+  [TOKENS.SHIB.address, TOKENS.USDC.address],
 ];
 
 
@@ -49,7 +49,7 @@ async function store(row) {
   await pool.query(
     `INSERT INTO dex_prices(dex, base, quote, block_number, price_base_quote, price_quote_base)
      VALUES ($1,$2,$3,$4,$5,$6)`,
-    [row.dex, row.symbB, row.symbQ, row.blockNumber, row.price, 1 / row.price]
+    [row.dex, row.symbB, row.symbQ, row.blockNumber, row.p, 1 / row.price]
   );
 }
 
@@ -155,8 +155,7 @@ async function tick() {
     console.log(
       out
         .filter(x => Number.isFinite(x.p))
-        .map(x => `${x.dex}:${x.p.toFixed(6)} ${label(x.symbQ)}/${label(x.symbB)} @#${x.blockNumber}`)
-        .join(' | ')
+        .map(x => `${x.dex}:${x.price.toFixed(6)} ${x.symbQ}/${x.symbB} @#${x.blockNumber}`)        .join(' | ')
     );
   } catch (e) {
     console.error('tick:', e.message);
