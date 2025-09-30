@@ -136,8 +136,6 @@ async function tick() {
           const p = d.proto === 'v3'? await fetchSpotPriceETHUSDC_V3(d.factory, b, q,decBase, decQuote, d.fee) : 
           await fetchSpotPriceV2(d.factory, b, q, decBase, decQuote);
 
-          if (!Number.isFinite(p)) continue; 
-
           const row = { dex: d.dex, symbB, symbQ, p, blockNumber };
           out.push(row);
           await store(row);
@@ -152,11 +150,8 @@ async function tick() {
       return;
     }
 
-    console.log(
-      out
-        .filter(x => Number.isFinite(x.p))
-        .map(x => `${x.dex}:${x.price.toFixed(6)} ${x.symbQ}/${x.symbB} @#${x.blockNumber}`)        .join(' | ')
-    );
+console.log(`[tick @#${blockNumber}] lignes valides:`,out.filter(x => typeof x.p=== 'number' && isFinite(x.p)).length);
+
   } catch (e) {
     console.error('tick:', e.message);
   }
