@@ -157,16 +157,37 @@ console.log(`[tick @#${blockNumber}] lignes valides:`,out.filter(x => typeof x.p
   }
 }
 
-
-/* // (Optionnel) calcul d'écart :
-const GAP_ALERT = 0.005; // 0.5%
-const a = out[0], b = out[1];
-const pct = b.priceETH_USDC / a.priceETH_USDC - 1;
-if (Math.abs(pct) >= GAP_ALERT) {
-  const s = pct >= 0 ? '+' : '';
-  console.log(`ECART ${s}${(pct*100).toFixed(2)}% — ${b.dex} vs ${a.dex}`);
+function diffPrice(row1, row2) {
+  const GAP_ALERT = 0.005; // 0.5%
+  const opp = [];
+  if (row1.price > row2.price) {
+    const spread = (row1.price - row2.price) / row2.price;
+    if (spread >= GAP_ALERT) {
+      opp.push({
+        Buy: row2.dex,
+        Sell: row1.dex,
+        Pair: `${row2.symbB}/${row2.symbQ}`,
+        SpreadPct: `${(spread * 100).toFixed(2)} %`,
+      });
+    }
+  }
+  if (row1.price < row2.price) {
+    const spread = (row2.price - row1.price) / row1.price;
+    if (spread >= GAP_ALERT) {
+      opp.push({
+        Buy: row1.dex,
+        Sell: row2.dex,
+        Pair: `${row1.symbB}/${row1.symbQ}`,
+        SpreadPct: `${(spread * 100).toFixed(2)} %`,
+      });
+    }
+  }
+  return opp;
 }
-*/
+
+
+
+
 
 async function main() {
   let lastBlock = 0;
