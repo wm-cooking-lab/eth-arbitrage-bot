@@ -36,9 +36,9 @@ const V3_POOL_ABI = [
 ];
 
 const PAIRS = [
-  [TOKENS.WETH.address, TOKENS.USDC.address],
-  [TOKENS.WBTC.address, TOKENS.USDC.address],
-  [TOKENS.SHIB.address, TOKENS.USDC.address],
+  [TOKENS.USDC.address, TOKENS.WETH.address],
+  [ TOKENS.USDC.address, TOKENS.WBTC.address],
+  [ TOKENS.USDC.address, TOKENS.SHIB.address],
 ];
 
 
@@ -47,9 +47,9 @@ const pool = new Pool({ connectionString: process.env.DATABASE_URL });
 async function store(row) {
   // row: { dex, base, quote, price, blockNumber }
   await pool.query(
-    `INSERT INTO dex_prices(dex, base, quote, block_number, price_base_quote, price_quote_base)
+    `INSERT INTO dex_prices(dex, base, quote, block_number, price_quote_in_base, price_base_in_quote)
      VALUES ($1,$2,$3,$4,$5,$6)`,
-    [row.dex, row.symbB, row.symbQ, row.blockNumber, row.p, 1 / row.price]
+    [row.dex, row.symbB, row.symbQ, row.blockNumber, row.p, 1 / row.p]
   );
 }
 
@@ -143,22 +143,32 @@ async function tick() {
           continue;
         }
       }
-    }
+
+      let l = 0;      
+      var opp = [];
+      for (let i = l; i < out.length - 1; i++) {
+        for (let j = i + 1; j < out.length; j++) {
+          opp.push(diffPrice(out[i], out[j]));
+        }
+      }
+      l = out.length;
 
     if (out.length === 0) {
       console.log('Aucun marché disponible sur ces DEX/fees pour les paires choisies.');
       return;
     }
-
-console.log(`[tick @#${blockNumber}] lignes valides:`,out.filter(x => typeof x.p=== 'number' && isFinite(x.p)).length);
-
-  } catch (e) {
+  }
+  console.log(`[tick @#${blockNumber}] lignes valides:`,out.filter(x => typeof x.p=== 'number' && isFinite(x.p)).length);
+  console.log("Opportunities:", opp);
+} 
+catch (e) {
     console.error('tick:', e.message);
   }
+
 }
 
 function diffPrice(row1, row2) {
-  const GAP_ALERT = 0.005; // 0.5%
+  const GAP_ALERT = 0.00; // 0.5%
   const opp = [];
   if (row1.price > row2.price) {
     const spread = (row1.price - row2.price) / row2.price;
