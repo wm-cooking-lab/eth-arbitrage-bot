@@ -38,7 +38,7 @@ const V3_POOL_ABI = [
 const PAIRS = [
   [TOKENS.USDC.address, TOKENS.WETH.address],
   [ TOKENS.USDC.address, TOKENS.WBTC.address],
-  [ TOKENS.USDC.address, TOKENS.SHIB.address],
+  [ TOKENS.SHIB.address, TOKENS.USDC.address],
 ];
 
 
@@ -78,7 +78,7 @@ async function fetchSpotPriceV2(factoryAddress, base, quote,decBase, decQuote) {
     ResBase = parseFloat(ethers.formatUnits(reserves.reserve1, decBase));
     ResQuote = parseFloat(ethers.formatUnits(reserves.reserve0, decQuote));
   }
-  let price = ResQuote / ResBase;
+  let price =  ResBase/ResQuote;
   return price;
 }
 
