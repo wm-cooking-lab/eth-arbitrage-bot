@@ -38,7 +38,7 @@ const V3_POOL_ABI = [
 const PAIRS = [
   [TOKENS.USDC.address, TOKENS.WETH.address],
   [ TOKENS.USDC.address, TOKENS.WBTC.address],
-  [ TOKENS.SHIB.address, TOKENS.USDC.address],
+  [ TOKENS.USDC.address, TOKENS.SHIB.address],
 ];
 
 
@@ -104,11 +104,11 @@ async function fetchSpotPriceETHUSDC_V3(factoryAddress, base, quote, decBase, de
   let den = Q192;
   let price;
 
-  // Price1/0=(sqrt^2 / 2^192) * 10^(dec0 - dec1)
-  if (BigInt(base)<BigInt(quote)) { // Base = token 0
-    price = Number(num)/Number(den)*10**(decBase-decQuote) ;
-  } else {  //Base = token 1 
-    price = Number(den)/Number(num)*10**(decBase-decQuote);
+  // token1/token0=(sqrt^2 / 2^192)
+  if (BigInt(base)>BigInt(quote)) { // Base = token 1
+    price = Number(num)/Number(den)*10**(decQuote-decBase) ;
+  } else {  //Base = token 0 
+    price = Number(den)/Number(num)*10**(decQuote-decBase);
   }
   return price;
 }
