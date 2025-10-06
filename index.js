@@ -32,7 +32,8 @@ const PAIR_ABI = [
 const V3_POOL_ABI = [
   'function slot0() view returns (uint160 sqrtPriceX96, int24 tick, uint16, uint16, uint16, uint8, bool)',
   'function token0() view returns (address)',
-  'function token1() view returns (address)'
+  'function token1() view returns (address)',
+  'function liquidity() view returns (uint128)'
 ];
 
 const PAIRS = [
@@ -98,7 +99,9 @@ async function fetchSpotPriceETHUSDC_V3(factoryAddress, base, quote, decBase, de
   }
 
   const poolV3 = new ethers.Contract(poolAddress, V3_POOL_ABI, provider);
-  const slot = await (poolV3.slot0());
+  const [slot, liquidity] = await Promise.all([ poolV3.slot0(), poolV3.liquidity() ]);
+
+  if (liquidity === 0n) return null;
 
   const sqrtX96 = slot.sqrtPriceX96; //BigInt
   const Q192 = (1n << 192n); // 2^192
@@ -171,7 +174,7 @@ catch (e) {
 }
 
 function diffPrice(row1, row2) {
-  const GAP_ALERT = 0.00; // 0.5%
+  const GAP_ALERT = 0.000; // 0.5%
   const opp = [];
   if (row1.p > row2.p) {
     const spread = (row1.p - row2.p) / row2.p;
