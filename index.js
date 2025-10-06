@@ -1,9 +1,8 @@
 import 'dotenv/config';
 import { ethers } from 'ethers';
-import pkg from 'pg';
-const { Pool } = pkg;
-
-const provider = new ethers.JsonRpcProvider(process.env.RPC_URL);
+import { store, storeOpp, pool } from "./db.js";
+import { fetchSpotPriceV2, fetchSpotPriceV3, provider } from "./fetchPrices.js";
+import { diffPrice } from "./diffPrice.js";
 
 const DEXES = [
   { dex: 'uniswap-v2',   proto: 'v2', factory: '0x5C69bEe701ef814a2B6a3EDD4B1652CB9cc5aA6f' }, // Uni V2
@@ -12,8 +11,6 @@ const DEXES = [
   { dex: 'uniswap-v3-3000', proto: 'v3', factory: '0x1F98431c8aD98523631AE4a59f267346ea31F984', fee: 3000 },
 ];
 
-const V2_FACTORY_ABI = ['function getPair(address,address) view returns (address)'];
-const V3_FACTORY_ABI = ['function getPool(address,address,uint24) view returns (address)'];
 
 const TOKENS = {
   SHIB: { address: '0x95ad61b0a150d79219dcf64e1e6cc01f0b64c4ce', decimals: 18 },
@@ -23,110 +20,11 @@ const TOKENS = {
 };
 
 
-const PAIR_ABI = [
-  'function token0() view returns (address)',
-  'function token1() view returns (address)',
-  'function getReserves() view returns (uint112 reserve0, uint112 reserve1, uint32 blockTimestampLast)',
-];
-
-const V3_POOL_ABI = [
-  'function slot0() view returns (uint160 sqrtPriceX96, int24 tick, uint16, uint16, uint16, uint8, bool)',
-  'function token0() view returns (address)',
-  'function token1() view returns (address)',
-  'function liquidity() view returns (uint128)'
-];
-
 const PAIRS = [
   [TOKENS.USDC.address, TOKENS.WETH.address],
   [ TOKENS.USDC.address, TOKENS.WBTC.address],
   [ TOKENS.USDC.address, TOKENS.SHIB.address],
 ];
-
-
-const pool = new Pool({ connectionString: process.env.DATABASE_URL });
-
-async function store(row) {
-  // row: { dex, base, quote, price, blockNumber }
-  await pool.query(
-    `INSERT INTO dex_prices(dex, base, quote, block_number, price_quote_in_base, price_base_in_quote)
-     VALUES ($1,$2,$3,$4,$5,$6)`,
-    [row.dex, row.symbB, row.symbQ, row.blockNumber, row.p, 1 / row.p]
-  );
-}
-
-async function store_opp(row, blocknumber) {
-  // row: { dex, base, quote, price, blockNumber }
-  await pool.query(
-    `INSERT INTO opportunities(block_number, pair, dex_buy, dex_sell, spread_pct)
-     VALUES ($1,$2,$3,$4,$5)`,
-    [blocknumber, row.Pair, row.Buy, row.Sell, row.SpreadPct]
-  );
-}
-
-
-async function fetchSpotPriceV2(factoryAddress, base, quote,decBase, decQuote) {
-
-// Normalize all input addresses to checksum format
-  const f = ethers.getAddress(factoryAddress);
-
-  const factory = new ethers.Contract(f, V2_FACTORY_ABI, provider);
-  const pairAddress = await factory.getPair(base, quote);
-  if (!pairAddress || pairAddress === ethers.ZeroAddress) {
-    return null;
-  }
-
-  const pair = new ethers.Contract(pairAddress, PAIR_ABI, provider);
-  const reserves = await (pair.getReserves());
-
-  if (reserves.reserve0 === 0n || reserves.reserve1 === 0n) return null;
-
-  let ResBase, ResQuote;
-// Uniswap V2/V3 (and most forks): token0 = min(addressA, addressB) by numeric address (uint160)
-  if (BigInt(base)<BigInt(quote))
-  {
-    ResBase = parseFloat(ethers.formatUnits(reserves.reserve0, decBase));
-    ResQuote = parseFloat(ethers.formatUnits(reserves.reserve1, decQuote));
-  }
-  else {
-    ResBase = parseFloat(ethers.formatUnits(reserves.reserve1, decBase));
-    ResQuote = parseFloat(ethers.formatUnits(reserves.reserve0, decQuote));
-  }
-  let price =  ResBase/ResQuote;
-  return price;
-}
-
-
-
-async function fetchSpotPriceETHUSDC_V3(factoryAddress, base, quote, decBase, decQuote, fee) {
-
-  const f = ethers.getAddress(factoryAddress);
-
-  const factory = new ethers.Contract(f, V3_FACTORY_ABI, provider);
-  const poolAddress = await factory.getPool(base, quote, fee);
-  if (!poolAddress || poolAddress === ethers.ZeroAddress) {
-    return null;
-  }
-
-  const poolV3 = new ethers.Contract(poolAddress, V3_POOL_ABI, provider);
-  const [slot, liquidity] = await Promise.all([ poolV3.slot0(), poolV3.liquidity() ]);
-
-  if (liquidity === 0n) return null;
-
-  const sqrtX96 = slot.sqrtPriceX96; //BigInt
-  const Q192 = (1n << 192n); // 2^192
-
-  let num = sqrtX96 * sqrtX96; 
-  let den = Q192;
-  let price;
-
-  // token1/token0=(sqrt^2 / 2^192)
-  if (BigInt(base)>BigInt(quote)) { // Base = token 1
-    price = Number(num)/Number(den)*10**(decQuote-decBase) ;
-  } else {  //Base = token 0 
-    price = Number(den)/Number(num)*10**(decQuote-decBase);
-  }
-  return price;
-}
 
 async function tick() {
   try {
@@ -149,7 +47,7 @@ async function tick() {
             if (symbB !== "UNKNOWN" && symbQ !== "UNKNOWN") break;
           }
 
-          const p = d.proto === 'v3'? await fetchSpotPriceETHUSDC_V3(d.factory, b, q,decBase, decQuote, d.fee) : 
+          const p = d.proto === 'v3'? await fetchSpotPriceV3(d.factory, b, q,decBase, decQuote, d.fee) : 
           await fetchSpotPriceV2(d.factory, b, q, decBase, decQuote);
 
           if (p===null){continue}
@@ -167,7 +65,7 @@ async function tick() {
           let diff = diffPrice(out[i], out[j]);
           if (diff !== null){
             opp.push(diff);
-            await store_opp(diff, blockNumber);
+            await storeOpp(diff, blockNumber);
           }
          
         }
@@ -185,37 +83,6 @@ catch (e) {
   }
 
 }
-
-function diffPrice(row1, row2) {
-  const GAP_ALERT = 0.001; // 0.1%
-  if (row1.p > row2.p) {
-    const spread = (row1.p - row2.p) / row2.p;
-    if (spread >= GAP_ALERT) {
-      return {
-        Buy: row2.dex,
-        Sell: row1.dex,
-        Pair: `${row2.symbB}/${row2.symbQ}`,
-        SpreadPct: spread,
-      };
-    }
-  }
-  if (row1.p < row2.p) {
-    const spread = (row2.p - row1.p) / row1.p;
-    if (spread >= GAP_ALERT) {
-      return({
-        Buy: row1.dex,
-        Sell: row2.dex,
-        Pair: `${row1.symbB}/${row1.symbQ}`,
-        SpreadPct: spread,
-      });
-    }
-  }
-  return null;
-}
-
-
-
-
 
 async function main() {
   let lastBlock = 0;
