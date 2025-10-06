@@ -53,6 +53,7 @@ async function store(row) {
   );
 }
 
+
 async function fetchSpotPriceV2(factoryAddress, base, quote,decBase, decQuote) {
 
 // Normalize all input addresses to checksum format
@@ -66,6 +67,8 @@ async function fetchSpotPriceV2(factoryAddress, base, quote,decBase, decQuote) {
 
   const pair = new ethers.Contract(pairAddress, PAIR_ABI, provider);
   const reserves = await (pair.getReserves());
+
+  if (reserves.reserve0 === 0n || reserves.reserve1 === 0n) return null;
 
   let ResBase, ResQuote;
 // Uniswap V2/V3 (and most forks): token0 = min(addressA, addressB) by numeric address (uint160)
@@ -118,6 +121,7 @@ async function tick() {
     const out = [];
     const blockNumber = await provider.getBlockNumber(); 
     for (const [base, quote] of PAIRS) {
+      const start = out.length;  
       for (const d of DEXES) {
         try {
           const b = ethers.getAddress(base);
@@ -136,6 +140,7 @@ async function tick() {
           const p = d.proto === 'v3'? await fetchSpotPriceETHUSDC_V3(d.factory, b, q,decBase, decQuote, d.fee) : 
           await fetchSpotPriceV2(d.factory, b, q, decBase, decQuote);
 
+          if (p===null){continue}
           const row = { dex: d.dex, symbB, symbQ, p, blockNumber };
           out.push(row);
           await store(row);
@@ -143,21 +148,19 @@ async function tick() {
           continue;
         }
       }
-
-      let l = 0;      
+    
       var opp = [];
-      for (let i = l; i < out.length - 1; i++) {
+      for (let i = start; i < out.length - 1; i++) {
         for (let j = i + 1; j < out.length; j++) {
           opp.push(diffPrice(out[i], out[j]));
         }
       }
-      l = out.length;
 
+  }
+  
     if (out.length === 0) {
       console.log('Aucun marché disponible sur ces DEX/fees pour les paires choisies.');
-      return;
     }
-  }
   console.log(`[tick @#${blockNumber}] lignes valides:`,out.filter(x => typeof x.p=== 'number' && isFinite(x.p)).length);
   console.log("Opportunities:", opp);
 } 
@@ -170,8 +173,8 @@ catch (e) {
 function diffPrice(row1, row2) {
   const GAP_ALERT = 0.00; // 0.5%
   const opp = [];
-  if (row1.price > row2.price) {
-    const spread = (row1.price - row2.price) / row2.price;
+  if (row1.p > row2.p) {
+    const spread = (row1.p - row2.p) / row2.p;
     if (spread >= GAP_ALERT) {
       opp.push({
         Buy: row2.dex,
@@ -181,8 +184,8 @@ function diffPrice(row1, row2) {
       });
     }
   }
-  if (row1.price < row2.price) {
-    const spread = (row2.price - row1.price) / row1.price;
+  if (row1.p < row2.p) {
+    const spread = (row2.p - row1.p) / row1.p;
     if (spread >= GAP_ALERT) {
       opp.push({
         Buy: row1.dex,
