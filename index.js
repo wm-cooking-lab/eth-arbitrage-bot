@@ -54,6 +54,15 @@ async function store(row) {
   );
 }
 
+async function store_opp(row, blocknumber) {
+  // row: { dex, base, quote, price, blockNumber }
+  await pool.query(
+    `INSERT INTO opportunities(block_number, pair, dex_buy, dex_sell, spread_pct)
+     VALUES ($1,$2,$3,$4,$5)`,
+    [blocknumber, row.Pair, row.Buy, row.Sell, row.SpreadPct]
+  );
+}
+
 
 async function fetchSpotPriceV2(factoryAddress, base, quote,decBase, decQuote) {
 
@@ -155,10 +164,14 @@ async function tick() {
       var opp = [];
       for (let i = start; i < out.length - 1; i++) {
         for (let j = i + 1; j < out.length; j++) {
-          opp.push(diffPrice(out[i], out[j]));
+          let diff = diffPrice(out[i], out[j]);
+          if (diff !== null){
+            opp.push(diff);
+            await store_opp(diff, blockNumber);
+          }
+         
         }
       }
-
   }
   
     if (out.length === 0) {
@@ -166,7 +179,7 @@ async function tick() {
     }
   console.log(`[tick @#${blockNumber}] lignes valides:`,out.filter(x => typeof x.p=== 'number' && isFinite(x.p)).length);
   console.log("Opportunities:", opp);
-} 
+ } 
 catch (e) {
     console.error('tick:', e.message);
   }
@@ -174,31 +187,30 @@ catch (e) {
 }
 
 function diffPrice(row1, row2) {
-  const GAP_ALERT = 0.000; // 0.5%
-  const opp = [];
+  const GAP_ALERT = 0.001; // 0.1%
   if (row1.p > row2.p) {
     const spread = (row1.p - row2.p) / row2.p;
     if (spread >= GAP_ALERT) {
-      opp.push({
+      return {
         Buy: row2.dex,
         Sell: row1.dex,
         Pair: `${row2.symbB}/${row2.symbQ}`,
-        SpreadPct: `${(spread * 100).toFixed(2)} %`,
-      });
+        SpreadPct: spread,
+      };
     }
   }
   if (row1.p < row2.p) {
     const spread = (row2.p - row1.p) / row1.p;
     if (spread >= GAP_ALERT) {
-      opp.push({
+      return({
         Buy: row1.dex,
         Sell: row2.dex,
         Pair: `${row1.symbB}/${row1.symbQ}`,
-        SpreadPct: `${(spread * 100).toFixed(2)} %`,
+        SpreadPct: spread,
       });
     }
   }
-  return opp;
+  return null;
 }
 
 
