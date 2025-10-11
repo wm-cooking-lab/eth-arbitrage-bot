@@ -2,7 +2,7 @@ import 'dotenv/config';
 import { ethers } from 'ethers';
 import { store, storeOpp, pool } from "./db.js";
 import { fetchSpotPriceV2, fetchSpotPriceV3, provider } from "./fetchPrices.js";
-import { diffPrice } from "./diffPrice.js";
+import { diffPrice, GAP_ALERT } from "./diffPrice.js";
 
 const DEXES = [
   { dex: 'uniswap-v2',   proto: 'v2', factory: '0x5C69bEe701ef814a2B6a3EDD4B1652CB9cc5aA6f' }, // Uni V2

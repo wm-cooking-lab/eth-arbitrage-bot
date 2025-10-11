@@ -1,5 +1,6 @@
+export const GAP_ALERT = 0.005; // 0.5%
+
 export function diffPrice(row1, row2) {
-  const GAP_ALERT = 0.001; // 0.1%
   if (row1.p > row2.p) {
     const spread = (row1.p - row2.p) / row2.p;
     if (spread >= GAP_ALERT) {
