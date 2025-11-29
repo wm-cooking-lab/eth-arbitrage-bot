@@ -3,6 +3,9 @@ import { ethers } from 'ethers';
 import { store, storeOpp, pool } from "./db.js";
 import { fetchSpotPriceV2, fetchSpotPriceV3, provider } from "./fetchPrices.js";
 import { diffPrice, GAP_ALERT } from "./diffPrice.js";
+import {recheckAndExecute} from "./gas.js"
+
+export const signer = new ethers.Wallet(process.env.PRIVATE_KEY, provider);
 
 const DEXES = [
   { dex: 'uniswap-v2',   proto: 'v2', factory: '0x5C69bEe701ef814a2B6a3EDD4B1652CB9cc5aA6f' }, // Uni V2
@@ -12,7 +15,7 @@ const DEXES = [
 ];
 
 
-const TOKENS = {
+export const TOKENS = {
   SHIB: { address: '0x95ad61b0a150d79219dcf64e1e6cc01f0b64c4ce', decimals: 18 },
   USDC: { address: '0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48', decimals: 6 },
   WBTC: { address: '0x2260FAC5E5542a773Aa44fBCfeDf7C193bc2C599', decimals: 8 },
@@ -66,6 +69,8 @@ async function tick() {
           if (diff !== null){
             opp.push(diff);
             await storeOpp(diff, blockNumber);
+            const amountIn = ethers.parseUnits("50", 6); //50 en entrée
+            await recheckAndExecute(opp, amountIn, provider, signer);
           }
          
         }
