@@ -87,7 +87,7 @@ Le bot enregistre :
   
 Idéal pour analyse et optimisation.
 
-### Architecture du projet
+## Architecture du projet
 ```text
 eth-arbitrage-bot/
 │
@@ -147,4 +147,44 @@ eth-arbitrage-bot/
 │
 └── README.md
       ↳ Documentation complète du projet.
+```
+## Installation
+
+### 1. Cloner le repository
+```bash
+git clone https://github.com/<wm-cooking-lab>/eth-arbitrage-bot
+cd eth-arbitrage-bot
+```
+
+### 2. Installer les dépendances
+```bash
+npm install
+```
+
+## Configuration
+Créer un fichier .env à la racine du projet : 
+```bash
+RPC_URL=
+PRIVATE_KEY=
+DATABASE_URL=
+```
+Un fichier .env.example est fourni pour indiquer les variables attendues.
+
+## Lancement du bot
+Avant de lancer le bot pour la première fois, vous devez approuver l’accès de vos tokens aux routeurs Uniswap / SushiSwap : 
+```bash
+node src/approve.js
+```
+Démarrer le bot :
+```bash
+node src/index.js
+```
+Exemple d’opportunité détectée :
+```bash
+{
+  "Buy": "uniswap-v2",
+  "Sell": "uniswap-v3-3000",
+  "Pair": "USDC/SHIB",
+  "SpreadPct": 0.004149145936847805
+}
 ```
