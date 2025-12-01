@@ -188,3 +188,65 @@ Exemple d’opportunité détectée :
   "SpreadPct": 0.004149145936847805
 }
 ```
+## Limites actuelles & pistes d’amélioration
+
+Ce projet est volontairement focalisé sur la logique de base de l’arbitrage (détection de spread, resimulation, exécution).  
+Plusieurs aspects importants du MEV en production ne sont **pas encore** implémentés :
+
+###  Utilisation d’un validateur / relay privé
+
+Actuellement, le bot envoie ses transactions via un RPC public :
+
+- les transactions sont visibles dans le **mempool public** ;
+- d’autres bots peuvent **front-run** ou **back-run** ces arbitrages ;
+- la stratégie peut se faire “voler” entre la détection et l’inclusion dans le bloc.
+
+Piste d’amélioration :
+
+- passer par un **relay / builder privé** ;
+- packager les transactions d’arbitrage dans un **bundle** protégé ;
+- éviter d’exposer les opportunités directement au mempool public.
+
+
+###  Prise en compte incomplète des frais de la blockchain
+
+Dans cette version, le bot se concentre sur :
+
+- le **spread entre prix d’achat et de vente** ;
+- la **quantité de tokens** entrée/sortie.
+
+Il ne calcule pas encore précisément :
+
+- le **coût total en gas** des deux swaps (buy + sell) ;
+- le coût d’éventuels transfers / approvals ;
+- l’impact de la congestion réseau sur les frais.
+
+On part implicitement du principe que :
+
+> **`amountIn` est suffisamment grand pour que le spread couvre largement les gas fees.**
+
+Pistes d’amélioration :
+
+- estimer le coût gas des transactions via `estimateGas` pour chaque étape ;
+- intégrer les gas fees dans la décision finale :  
+  `profit_net = montant_sortie - montant_entree - coûts_gas` ;
+- ignorer toute opportunité dont le profit net estimé est inférieur à un seuil donné.
+
+
+###  Autres améliorations possibles
+
+Quelques axes naturels d’extension :
+
+- ajouter d’autres DEX (Curve, Balancer, Maverick, etc.) ;
+- gérer les **routes multi-hop** (ex : USDC → WETH → TOKEN) plutôt que des paires simples ;
+- améliorer la gestion du slippage avec un modèle plus fin ;
+- brancher un système de **monitoring / dashboard** sur PostgreSQL ;
+
+
+En résumé : ce bot vise à fournir une **base propre et pédagogique** pour l’arbitrage on-chain.  
+La logique MEV “industrielle” peut être construite par-dessus cette architecture.
+
+## Avertissement
+
+Ce projet est un outil d'étude avancé dédié à la compréhension du MEV.
+L’auteur décline toute responsabilité quant aux pertes financières éventuelles.
