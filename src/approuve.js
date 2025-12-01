@@ -1,10 +1,7 @@
+// approuve.js
 import "dotenv/config";
 import { ethers } from "ethers";
-import { TOKENS } from "./index.js";
-import { ROUTERS_V2, SWAP_ROUTER_V3 } from "./gas.js";
-
-const provider = new ethers.JsonRpcProvider(process.env.RPC_URL);
-const signer = new ethers.Wallet(process.env.PRIVATE_KEY, provider);
+import { provider, signer, TOKENS, ROUTERS_V2, SWAP_ROUTER_V3 } from "./config.js";
 
 const ERC20_ABI = [
   "function approve(address spender, uint256 amount) external returns (bool)"

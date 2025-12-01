@@ -1,4 +1,5 @@
-import { ethers } from 'ethers';
+import { ethers } from "ethers";
+import { provider } from "./config.js";
 
 const V2_FACTORY_ABI = ['function getPair(address,address) view returns (address)'];
 const V3_FACTORY_ABI = ['function getPool(address,address,uint24) view returns (address)'];
@@ -15,8 +16,6 @@ const V3_POOL_ABI = [
   'function token1() view returns (address)',
   'function liquidity() view returns (uint128)'
 ];
-
-export const provider = new ethers.JsonRpcProvider(process.env.RPC_URL);
 
 export async function fetchSpotPriceV2(factoryAddress, base, quote,decBase, decQuote) {
 
